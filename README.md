@@ -5,6 +5,10 @@ KML / KMZ の線を軽くして地図に表示する PWA。iPhone・Android 共�
 - 変換はすべて端末の中（Web Worker）。ファイルは外に送らない
 - 線（LineString / LinearRing / gx:Track）だけを取り出し、Douglas–Peucker で間引き（1 / 3 / 10 / 30 m）、座標は約1m精度の encoded polyline にする
 - 保存は IndexedDB。書き出しは KML か軽量ファイル（`.line.json`、このアプリで読み込める）
+- まとめて取り込み：複数の KML/KMZ や、ログを詰めた zip をそのまま選べる。同じファイル（名前と大きさが同じ）は飛ばす
+- 記録の日付は KML の中の日時 → ファイル名の日付 → ファイルの更新日時 の順に取る。一覧は年ごとにまとめ、名前・日付で探せる。年で色分けもできる
+- バックアップ：全部を1つの `.json.gz` に書き出し、開くボタンから戻せる（既にあるものは飛ばす）。iCloud Drive / Google Drive などに自分で置く
+- 読み込むファイルは信用しない：形の崩れた軽量ファイル・バックアップは受け取らない。ページは CSP で自分自身と国土地理院タイル以外と通信できない
 - 背景は国土地理院タイル（標準・淡色・写真）。見たタイルとアプリ本体は Service Worker が保存（オフラインで開ける）
 - Android は共有メニューから直接送れる（インストール後）。iPhone は「＋ KMLを開く」から「ファイル」アプリで選ぶ
 
@@ -31,7 +35,7 @@ http://localhost:8790/ を開く。テスト用ファイルは `python devtools/
 
 ## スマホで使う
 
-Service Worker と現在地は HTTPS が必要なので、GitHub Pages などに置く。
-置いたURLを開いて、iPhone は Safari の共有 →「ホーム画面に追加」、Android は Chrome のメニュー →「アプリをインストール」。
+Service Worker と現在地は HTTPS が必要。アカウント名が URL に出ないよう、このリポジトリは非公開にして Cloudflare Pages から公開する（ビルドなし、出力ディレクトリはリポジトリの最上位）。main に push すると反映される。
+公開したURLを開いて、iPhone は Safari の共有 →「ホーム画面に追加」、Android は Chrome のメニュー →「アプリをインストール」。
 
 アプリの中身を変えたときは `sw.js` の `APP` の版（`app-v1`）を上げる。

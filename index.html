@@ -25,9 +25,23 @@
   <section id="sheet" class="sheet">
     <header class="sheet-head">
       <button id="sheetToggle" class="plain">ルート <span id="count"></span> <span class="caret">▾</span></button>
-      <button id="openBtn" class="primary">＋ KMLを開く</button>
-      <input id="fileInput" type="file" class="vh">
+      <span class="head-btns">
+        <button id="toolsBtn" aria-expanded="false" aria-label="その他">⋯</button>
+        <button id="openBtn" class="primary">＋ 開く</button>
+      </span>
+      <input id="fileInput" type="file" class="vh" multiple>
     </header>
+
+    <div id="tools" class="tools" hidden>
+      <input id="search" type="search" placeholder="名前・日付で探す（例：2025-08）" autocomplete="off">
+      <div class="row start">
+        <button id="showAll">全部表示</button>
+        <button id="hideAll">全部隠す</button>
+        <button id="yearMode" aria-pressed="false">年で色分け</button>
+        <button id="backupBtn">バックアップを書き出す</button>
+      </div>
+      <p class="hint">開くボタンでは、複数のKML/KMZ、ログを詰めたzip、バックアップ（.json.gz）も選べます。</p>
+    </div>
 
     <div id="conv" class="conv" hidden>
       <div class="conv-file"><b id="convName"></b> <small id="convSize"></small></div>
@@ -42,11 +56,12 @@
       <div class="row">
         <button id="convCancel">やめる</button>
         <button id="convSave" class="primary" disabled>保存</button>
+        <button id="convStart" class="primary" hidden>取り込む</button>
       </div>
     </div>
 
     <ul id="list" class="list"></ul>
-    <p id="empty" class="empty">KML / KMZ を開くと、線を軽くして地図に表示します。</p>
+    <p id="empty" class="empty">KML / KMZ を開くと、線を軽くして地図に表示します。まとめて選んだり、zip で入れたりもできます。</p>
   </section>
 
   <div id="toast" class="toast" role="status"></div>

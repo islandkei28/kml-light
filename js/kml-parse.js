@@ -22,6 +22,7 @@ export class KmlLineReader {
     this.styleMaps = new Map();  // StyleMap id → normal の styleUrl
     this.placemarks = [];        // { name, styleUrl, color, width, lines: [[lon, lat, ...]] }
     this.docName = '';
+    this.firstWhen = '';         // 最初に出てきた日時（TimeStamp / TimeSpan / gx:Track）
     this.pm = null;
     this.style = null;
     this.styleMap = null;
@@ -129,6 +130,9 @@ export class KmlLineReader {
       case 'styleUrl': case 'key':
         this.text = '';
         break;
+      case 'when': case 'begin':
+        if (!this.firstWhen) this.text = '';
+        break;
     }
   }
 
@@ -158,6 +162,9 @@ export class KmlLineReader {
         break;
       case 'key':
         if (t !== null && this.pair) this.pair.key = t.trim();
+        break;
+      case 'when': case 'begin':
+        if (t !== null && !this.firstWhen) this.firstWhen = t.trim();
         break;
       case 'Style': {
         const st = this.style;

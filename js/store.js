@@ -14,11 +14,12 @@ async function tx(mode, fn) {
   return new Promise((res, rej) => {
     const t = d.transaction(STORE, mode);
     const req = fn(t.objectStore(STORE));
-    t.oncomplete = () => res(req.result);
+    t.oncomplete = () => res(req?.result);
     t.onerror = () => rej(t.error);
   });
 }
 
 export const listRoutes = () => tx('readonly', s => s.getAll());
 export const putRoute = r => tx('readwrite', s => s.put(r));
+export const putRoutes = list => tx('readwrite', s => { for (const r of list) s.put(r); });
 export const deleteRoute = id => tx('readwrite', s => s.delete(id));

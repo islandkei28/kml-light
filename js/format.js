@@ -1,13 +1,21 @@
 // 軽量ファイル（*.line.json）の形と、線の符号化（Google の encoded polyline、精度 1e-5 度 ≒ 1m）
 //
-// { "type": "kml-light", "v": 1, "name": "...", "bbox": [西, 南, 東, 北],
+// { "type": "kml-light", "v": 1, "name": "...", "date": "YYYY-MM-DD", "bbox": [西, 南, 東, 北],
 //   "lines": [ { "name": "...", "color": "#rrggbb", "width": 4, "p": "<encoded polyline>" } ] }
+// date と width はなくてもよい
 
 export const FORMAT = 'kml-light';
 const FACTOR = 1e5;
 
+// 外から来たファイルを信用しない：形が崩れていたり、変な値が入っていたりするものは受け取らない
 export function isLight(obj) {
-  return obj && obj.type === FORMAT && Array.isArray(obj.lines);
+  return !!obj && obj.type === FORMAT && typeof obj.name === 'string'
+    && (obj.date === undefined || obj.date === '' || /^\d{4}-\d{2}-\d{2}$/.test(obj.date))
+    && Array.isArray(obj.bbox) && obj.bbox.length === 4 && obj.bbox.every(Number.isFinite)
+    && Array.isArray(obj.lines) && obj.lines.length > 0
+    && obj.lines.every(l => l && typeof l.p === 'string' && /^#[0-9a-f]{6}$/i.test(l.color)
+      && (l.name === undefined || typeof l.name === 'string')
+      && (l.width === undefined || Number.isFinite(l.width)));
 }
 
 function encNum(v) {

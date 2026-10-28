@@ -63,5 +63,19 @@ with open(os.path.join(out, "sample.kml"), "w", encoding="utf-8") as f:
 with zipfile.ZipFile(os.path.join(out, "sample.kmz"), "w", zipfile.ZIP_DEFLATED) as z:
     z.writestr("files/readme.txt", "dummy")
     z.writestr("doc.kml", kml)
-for n in ("sample.kml", "sample.kmz"):
+# まとめて取り込む確認用：日付の違うログを詰めた zip（壊れたファイルと日付なしも1つずつ）
+with zipfile.ZipFile(os.path.join(out, "logs.zip"), "w", zipfile.ZIP_DEFLATED) as z:
+    for k in range(120):
+        y, m, d = 2023 + k % 4, 1 + k % 12, 1 + k % 28
+        x0, y0 = 139.0 + random.random(), 35.0 + random.random()
+        c = " ".join(f"{x0 + i * 1e-4 + random.gauss(0, 1e-5):.12f},{y0 + math.sin(i / 50) * 1e-3:.12f},10"
+                     for i in range(500))
+        z.writestr(f"logs/走行{k:03d}.kml",
+                   f'<kml><Document><name>走行 {y}-{m:02d}-{d:02d}</name><Placemark><TimeStamp><when>{y}-{m:02d}-{d:02d}T09:00:00+09:00</when></TimeStamp>'
+                   f"<LineString><coordinates>{c}</coordinates></LineString></Placemark></Document></kml>")
+    z.writestr("logs/no-date.kml", "<kml><Placemark><LineString><coordinates>139,35 139.01,35.01</coordinates></LineString></Placemark></kml>")
+    z.writestr("logs/broken.kml", "<kml><Placemark><Point><coordinates>139,35</coordinates></Point></Placemark></kml>")
+    z.writestr("__MACOSX/logs/._走行000.kml", "junk")
+
+for n in ("sample.kml", "sample.kmz", "logs.zip"):
     print(n, os.path.getsize(os.path.join(out, n)))

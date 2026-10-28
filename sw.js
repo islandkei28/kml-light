@@ -1,6 +1,6 @@
 // オフラインでも開けるようにアプリ本体と見た地図タイルを保存する。
 // Android の共有メニューから届いたファイルも受け取る。
-const APP = 'app-v2';
+const APP = 'app-v3';
 const TILES = 'tiles-v1';
 const TILE_MAX = 3000;
 const SHELL = [
@@ -40,10 +40,11 @@ self.addEventListener('fetch', e => {
 
 async function receiveShare(req) {
   const form = await req.formData();
-  const file = form.get('file');
-  if (file && typeof file !== 'string') {
-    const cache = await caches.open('share');
-    await cache.put('shared-file', new Response(file, { headers: { 'X-Filename': encodeURIComponent(file.name) } }));
+  const cache = await caches.open('share');
+  let i = 0;
+  for (const file of form.getAll('file')) {
+    if (typeof file === 'string') continue;
+    await cache.put(`shared-file-${i++}`, new Response(file, { headers: { 'X-Filename': encodeURIComponent(file.name) } }));
   }
   return Response.redirect('./?shared=1', 303);
 }

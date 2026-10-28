@@ -1,4 +1,4 @@
-import { listRoutes, putRoute, deleteRoute } from './store.js';
+import { listRoutes, putRoute, putRoutes, deleteRoute } from './store.js';
 import { decode, isLight, toKml } from './format.js';
 
 const $ = id => document.getElementById(id);
@@ -8,10 +8,19 @@ const BASES = [
   { id: 'pale', label: '淡色', url: GSI + 'pale/{z}/{x}/{y}.png' },
   { id: 'photo', label: '写真', url: GSI + 'seamlessphoto/{z}/{x}/{y}.jpg' },
 ];
+const BACKUP = 'kml-light-backup';
+const YEAR_COLORS = ['#e6194b', '#3c78d8', '#2e9d4f', '#f58231', '#911eb4', '#0aa5b5', '#d4a017', '#c2185b', '#6d4c41', '#455a64'];
 
-let routes = [];            // 保存したルート { id, name, created, visible, bytes, data }
+let routes = [];            // 保存したルート { id, created, visible, bytes, src: { name, bytes }, data }
 let preview = null;         // 変換したがまだ保存していないデータ
+let yearMode = false;
+let filterText = '';
+const openYears = new Set();
+let openYearsInit = false;
 const featureCache = new Map();
+
+const yearOf = data => (data.date || '').slice(0, 4);
+const yearColor = y => YEAR_COLORS[+y % YEAR_COLORS.length];
 
 // ---------- 地図 ----------
 
@@ -54,7 +63,7 @@ mapReady.then(() => {
     const div = document.createElement('div');
     div.innerHTML = '<b></b><br><small></small>';
     div.querySelector('b').textContent = p.name || '（名前なし）';
-    div.querySelector('small').textContent = p.route;
+    div.querySelector('small').textContent = [p.route, p.date].filter(Boolean).join('・');
     new maplibregl.Popup().setLngLat(e.lngLat).setDOMContent(div).addTo(map);
   });
   map.on('mouseenter', 'route-line', () => { map.getCanvas().style.cursor = 'pointer'; });
@@ -75,7 +84,10 @@ function features(key, data) {
   if (!f) {
     f = data.lines.map(l => ({
       type: 'Feature',
-      properties: { name: l.name, route: data.name, color: l.color, width: Math.min(Math.max(l.width || 4, 3), 8) },
+      properties: {
+        name: l.name, route: data.name, date: data.date || '', year: yearOf(data),
+        color: l.color, width: Math.min(Math.max(l.width || 4, 3), 8),
+      },
       geometry: { type: 'LineString', coordinates: decode(l.p) },
     }));
     featureCache.set(key, f);
@@ -90,13 +102,27 @@ function redraw() {
   for (const r of routes) if (r.visible) all.push(...features(r.id, r.data));
   if (preview) all.push(...features('preview', preview));
   src.setData({ type: 'FeatureCollection', features: all });
+
+  const years = [...new Set(all.map(f => f.properties.year).filter(Boolean))];
+  let color = ['get', 'color'];
+  if (yearMode && years.length) {
+    color = ['match', ['get', 'year']];
+    for (const y of years) color.push(y, yearColor(y));
+    color.push('#888888');
+  }
+  map.setPaintProperty('route-line', 'line-color', color);
 }
 
-function fitTo(data) {
-  const [w, s, e, n] = data.bbox;
-  const sheetH = window.innerWidth >= 720 ? 0 : $('sheet').offsetHeight;
+function fitTo(list) {
+  let w = 180, s = 90, e = -180, n = -90;
+  for (const d of list) {
+    w = Math.min(w, d.bbox[0]); s = Math.min(s, d.bbox[1]);
+    e = Math.max(e, d.bbox[2]); n = Math.max(n, d.bbox[3]);
+  }
+  if (w > e) return;
+  const wide = window.innerWidth >= 720;
   map.fitBounds([[w, s], [e, n]], {
-    padding: { top: 60, left: window.innerWidth >= 720 ? 410 : 30, right: 60, bottom: sheetH + 30 },
+    padding: { top: 60, left: wide ? 410 : 30, right: 60, bottom: (wide ? 0 : $('sheet').offsetHeight) + 30 },
     maxZoom: 16, duration: 600,
   });
 }
@@ -106,49 +132,106 @@ function fitTo(data) {
 const fmtBytes = b => b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(b < 10240 ? 1 : 0) + ' KB' : (b / 1048576).toFixed(1) + ' MB';
 const fmtNum = n => n.toLocaleString('ja-JP');
 
+function shownRoutes() {
+  const q = filterText.trim().toLowerCase();
+  return routes
+    .filter(r => !q || [r.data.name, r.data.date, r.src?.name].some(s => s && s.toLowerCase().includes(q)))
+    .sort((a, b) => (b.data.date || '').localeCompare(a.data.date || '') || b.created - a.created);
+}
+
 function renderList() {
   const ul = $('list');
   ul.textContent = '';
-  $('count').textContent = routes.length ? `（${routes.length}）` : '';
+  $('count').textContent = routes.length ? `（${fmtNum(routes.length)}）` : '';
   $('empty').hidden = routes.length > 0 || !$('conv').hidden;
-  for (const r of [...routes].sort((a, b) => b.created - a.created)) {
+
+  const groups = new Map();
+  for (const r of shownRoutes()) {
+    const y = yearOf(r.data);
+    if (!groups.has(y)) groups.set(y, []);
+    groups.get(y).push(r);
+  }
+  if (!openYearsInit && groups.size) { openYears.add(groups.keys().next().value); openYearsInit = true; }
+  const searching = filterText.trim() !== '';
+  for (const [y, list] of groups) {
+    const open = searching || openYears.has(y);
+    ul.append(yearRow(y, list, open));
+    if (open) for (const r of list) ul.append(routeRow(r));
+  }
+  if (searching && !groups.size) {
     const li = document.createElement('li');
-    li.innerHTML = `
-      <div class="item">
-        <input type="checkbox" aria-label="地図に表示">
-        <span class="swatch"></span>
-        <button class="info"><b></b><small></small></button>
-      </div>
-      <div class="actions">
-        <button data-a="fit">地図で見る</button>
-        <button data-a="kml">KMLで書き出す</button>
-        <button data-a="light">軽量ファイルで書き出す</button>
-        <button data-a="rename">名前を変える</button>
-        <button data-a="del" class="danger">削除</button>
-      </div>`;
-    const cb = li.querySelector('input');
-    cb.checked = r.visible;
-    cb.onchange = async () => { r.visible = cb.checked; redraw(); await putRoute(r); };
-    li.querySelector('.swatch').style.background = r.data.lines[0]?.color || '#888';
-    li.querySelector('b').textContent = r.data.name;
-    li.querySelector('small').textContent =
-      `${r.data.lines.length}本・${fmtBytes(r.bytes)}・${new Date(r.created).toLocaleDateString('ja-JP')}`;
-    li.querySelector('.info').onclick = () => {
-      li.classList.toggle('open');
-      if (!r.visible) { r.visible = cb.checked = true; redraw(); putRoute(r); }
-      fitTo(r.data);
-    };
-    li.querySelector('.actions').onclick = e => {
-      const a = e.target.dataset?.a;
-      if (a) onAction(a, r);
-    };
+    li.className = 'empty';
+    li.textContent = '見つかりません';
     ul.append(li);
   }
 }
 
+function yearRow(y, list, open) {
+  const li = document.createElement('li');
+  li.className = 'year' + (open ? '' : ' closed');
+  li.innerHTML = '<input type="checkbox"><span class="swatch"></span><button><span></span><span class="caret">▾</span></button>';
+  const label = `${y ? y + '年' : '日付なし'}（${fmtNum(list.length)}）`;
+  const cb = li.querySelector('input');
+  const nVis = list.filter(r => r.visible).length;
+  cb.checked = nVis === list.length;
+  cb.indeterminate = nVis > 0 && nVis < list.length;
+  cb.setAttribute('aria-label', label + 'を地図に表示');
+  cb.onchange = () => setVisible(list, cb.checked);
+  const sw = li.querySelector('.swatch');
+  if (yearMode && y) sw.style.background = yearColor(y);
+  else sw.hidden = true;
+  li.querySelector('button span').textContent = label;
+  li.querySelector('button').onclick = () => {
+    if (openYears.has(y)) openYears.delete(y); else openYears.add(y);
+    renderList();
+  };
+  return li;
+}
+
+function routeRow(r) {
+  const li = document.createElement('li');
+  li.innerHTML = `
+    <div class="item">
+      <input type="checkbox" aria-label="地図に表示">
+      <span class="swatch"></span>
+      <button class="info"><b></b><small></small></button>
+    </div>
+    <div class="actions">
+      <button data-a="fit">地図で見る</button>
+      <button data-a="kml">KMLで書き出す</button>
+      <button data-a="light">軽量ファイルで書き出す</button>
+      <button data-a="rename">名前を変える</button>
+      <button data-a="del" class="danger">削除</button>
+    </div>`;
+  const cb = li.querySelector('input');
+  cb.checked = r.visible;
+  cb.onchange = () => setVisible([r], cb.checked);
+  const y = yearOf(r.data);
+  li.querySelector('.swatch').style.background = yearMode && y ? yearColor(y) : r.data.lines[0]?.color || '#888';
+  li.querySelector('b').textContent = r.data.name;
+  li.querySelector('small').textContent = `${r.data.date || '日付なし'}・${r.data.lines.length}本・${fmtBytes(r.bytes)}`;
+  li.querySelector('.info').onclick = () => {
+    li.classList.toggle('open');
+    if (!r.visible) setVisible([r], true);
+    fitTo([r.data]);
+  };
+  li.querySelector('.actions').onclick = e => {
+    const a = e.target.dataset?.a;
+    if (a) onAction(a, r);
+  };
+  return li;
+}
+
+async function setVisible(list, v) {
+  for (const r of list) r.visible = v;
+  renderList();
+  redraw();
+  await putRoutes(list);
+}
+
 async function onAction(a, r) {
   const base = r.data.name.replace(/[\\/:*?"<>|]/g, '_') || 'route';
-  if (a === 'fit') fitTo(r.data);
+  if (a === 'fit') fitTo([r.data]);
   else if (a === 'kml') {
     await saveFile(new Blob([toKml(r.data)], { type: 'application/vnd.google-earth.kml+xml' }), base + '.kml');
   } else if (a === 'light') {
@@ -187,6 +270,22 @@ async function saveFile(blob, filename) {
 }
 
 $('sheetToggle').onclick = () => $('sheet').classList.toggle('collapsed');
+$('toolsBtn').onclick = () => {
+  const show = $('tools').hidden;
+  $('tools').hidden = !show;
+  $('toolsBtn').setAttribute('aria-expanded', show);
+  $('sheet').classList.remove('collapsed');
+};
+$('search').oninput = e => { filterText = e.target.value; renderList(); };
+$('showAll').onclick = () => setVisible(shownRoutes(), true);
+$('hideAll').onclick = () => setVisible(shownRoutes(), false);
+$('yearMode').onclick = () => {
+  yearMode = !yearMode;
+  $('yearMode').setAttribute('aria-pressed', yearMode);
+  renderList();
+  redraw();
+};
+$('backupBtn').onclick = exportBackup;
 
 let toastTimer;
 function toast(msg) {
@@ -194,102 +293,232 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+// ---------- バックアップ ----------
+
+async function exportBackup() {
+  if (!routes.length) { toast('まだルートがありません'); return; }
+  const body = JSON.stringify({
+    type: BACKUP, v: 1, exported: new Date().toISOString(),
+    routes: routes.map(({ id, created, visible, bytes, src, data }) => ({ id, created, visible, bytes, src, data })),
+  });
+  const gz = await new Response(new Blob([body]).stream().pipeThrough(new CompressionStream('gzip'))).blob();
+  const d = new Date();
+  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  toast(`${fmtNum(routes.length)}件を書き出します（${fmtBytes(gz.size)}）`);
+  await saveFile(new Blob([gz], { type: 'application/gzip' }), `kml-light-backup-${stamp}.json.gz`);
+}
+
+// 軽量ファイル（.line.json）かバックアップ（.json / .json.gz）を読み込む
+async function importJson(f, gz) {
+  try {
+    const text = gz ? await new Response(f.stream().pipeThrough(new DecompressionStream('gzip'))).text() : await f.text();
+    const obj = JSON.parse(text);
+    if (obj?.type === BACKUP && Array.isArray(obj.routes)) {
+      const have = new Set(routes.map(r => r.id));
+      const add = obj.routes
+        .filter(r => r && typeof r.id === 'string' && isLight(r.data) && !have.has(r.id))
+        .map(r => ({
+          id: r.id, created: +r.created || Date.now(), visible: r.visible !== false, bytes: +r.bytes || 0,
+          src: r.src && typeof r.src.name === 'string' ? { name: r.src.name, bytes: +r.src.bytes || 0 } : null,
+          data: r.data,
+        }));
+      await putRoutes(add);
+      routes.push(...add);
+      renderList();
+      redraw();
+      const same = obj.routes.length - add.length;
+      toast(`バックアップから${fmtNum(add.length)}件を戻しました` + (same ? `（${fmtNum(same)}件は既にあるか読めないので飛ばしました）` : ''));
+    } else if (isLight(obj)) {
+      await addRoute(obj, f.size, null);
+      toast(`「${obj.name}」を読み込みました`);
+    } else {
+      throw new Error();
+    }
+  } catch {
+    toast(`${f.name} を読めませんでした`);
+  }
 }
 
 // ---------- 変換 ----------
 
-let convFile = null, worker = null;
+let worker = null, gen = 0;
+const getWorker = () => worker ??= new Worker(new URL('./convert-worker.js', import.meta.url), { type: 'module' });
+function stopWorker() {
+  worker?.terminate();
+  worker = null;
+  gen++;
+}
+// Worker に1つ頼んで結果を待つ。stopWorker() したあとの返事は捨てる
+function ask(msg, onProgress) {
+  const w = getWorker(), g = gen;
+  return new Promise((res, rej) => {
+    w.onmessage = e => {
+      if (g !== gen) return;
+      const m = e.data;
+      if (m.type === 'progress') onProgress?.(m.ratio);
+      else if (m.type === 'error') rej(new Error(m.message));
+      else res(m);
+    };
+    w.onerror = e => { if (g === gen) rej(new Error(e.message || 'Worker のエラー')); };
+    w.postMessage(msg);
+  });
+}
 
 $('openBtn').onclick = () => $('fileInput').click();
 $('fileInput').onchange = e => {
-  const f = e.target.files[0];
+  const files = [...e.target.files];
   e.target.value = '';
-  if (f) openFile(f);
+  if (files.length) openFiles(files);
 };
 
-async function openFile(f) {
-  if (/\.json$/i.test(f.name)) return importLight(f);
-  if (!/\.(kml|kmz)$/i.test(f.name)) {
-    const head = new Uint8Array(await f.slice(0, 2).arrayBuffer());
-    const text = await f.slice(0, 2000).text();
-    if (!(head[0] === 0x50 && head[1] === 0x4b) && !/<kml[\s>]/.test(text)) {
-      toast('KML / KMZ / 軽量ファイル（.line.json）を選んでください');
-      return;
-    }
+async function sniff(f) {
+  if (/\.json$/i.test(f.name)) return 'json';
+  const h = new Uint8Array(await f.slice(0, 2).arrayBuffer());
+  if (h[0] === 0x1f && h[1] === 0x8b) return 'gz';
+  if (h[0] === 0x50 && h[1] === 0x4b) return /\.kmz$/i.test(f.name) ? 'kml' : 'zip';
+  if (/\.kml$/i.test(f.name) || /<kml[\s>]/.test(await f.slice(0, 2000).text())) return 'kml';
+  return '';
+}
+
+async function openFiles(files) {
+  const jobs = [], bad = [];
+  for (const f of files) {
+    const kind = await sniff(f);
+    if (kind === 'json' || kind === 'gz') await importJson(f, kind === 'gz');
+    else if (kind === 'kml') jobs.push({ file: f, label: f.name, size: f.size });
+    else if (kind === 'zip') {
+      try {
+        const { entries } = await ask({ op: 'list', file: f });
+        if (!entries.length) bad.push(f.name);
+        for (const z of entries) jobs.push({ file: f, entry: z.name, label: z.name.split('/').pop(), size: z.size });
+      } catch {
+        bad.push(f.name);
+      }
+    } else bad.push(f.name);
   }
-  convFile = f;
-  $('convName').textContent = f.name;
-  $('convSize').textContent = fmtBytes(f.size);
+  if (bad.length) toast(`読めないファイルがありました：${bad.slice(0, 3).join('、')}${bad.length > 3 ? ' ほか' : ''}`);
+  if (jobs.length === 1 && !jobs[0].entry) startSingle(jobs[0].file);
+  else if (jobs.length) startBatch(jobs);
+}
+
+let mode = null, convFile = null, previewSrc = null, lastStats = null, batchJobs = [];
+
+function showConv(title, size) {
+  $('convName').textContent = title;
+  $('convSize').textContent = fmtBytes(size);
   $('conv').hidden = false;
   $('sheet').classList.remove('collapsed');
+  $('convCancel').textContent = 'やめる';
+  document.querySelectorAll('input[name=tol]').forEach(r => { r.disabled = false; });
   renderList();
-  convert();
 }
 
-async function importLight(f) {
-  try {
-    const data = JSON.parse(await f.text());
-    if (!isLight(data)) throw new Error();
-    await addRoute(data, f.size);
-    toast(`「${data.name}」を読み込みました`);
-  } catch {
-    toast('軽量ファイルとして読めませんでした');
-  }
+const tolerance = () => +document.querySelector('input[name=tol]:checked').value;
+document.querySelectorAll('input[name=tol]').forEach(r => { r.onchange = () => { if (mode === 'single') convertSingle(); }; });
+
+// 1つだけのとき：変換して地図で見比べてから保存する
+function startSingle(file) {
+  mode = 'single';
+  convFile = file;
+  showConv(file.name, file.size);
+  $('convSave').hidden = false;
+  $('convStart').hidden = true;
+  convertSingle();
 }
 
-function tolerance() {
-  return +document.querySelector('input[name=tol]:checked').value;
-}
-document.querySelectorAll('input[name=tol]').forEach(r => { r.onchange = () => convFile && convert(); });
-
-let lastStats = null;
-function convert() {
-  worker?.terminate();
+async function convertSingle() {
+  stopWorker();
   preview = null;
+  featureCache.delete('preview');
   redraw();
   $('convSave').disabled = true;
   $('convProg').hidden = false;
   $('convProg').value = 0;
   $('convStat').textContent = '読み込み中…';
-  worker = new Worker(new URL('./convert-worker.js', import.meta.url), { type: 'module' });
-  worker.onmessage = e => {
-    const m = e.data;
-    if (m.type === 'progress') {
-      $('convProg').value = m.ratio;
-      $('convStat').textContent = `読み込み中… ${Math.round(m.ratio * 100)}%`;
-    } else if (m.type === 'done') {
-      worker.terminate();
-      worker = null;
-      $('convProg').hidden = true;
-      preview = m.data;
-      lastStats = m.stats;
-      featureCache.delete('preview');
-      const s = m.stats;
-      $('convStat').innerHTML =
-        `${fmtBytes(s.inBytes)} → <b>${fmtBytes(s.outBytes)}</b>（線 ${s.lines}本、点 ${fmtNum(s.ptsIn)} → ${fmtNum(s.ptsOut)}）`;
-      $('convSave').disabled = false;
-      redraw();
-      fitTo(preview);
-    } else {
-      worker.terminate();
-      worker = null;
-      $('convProg').hidden = true;
-      $('convStat').textContent = '変換できませんでした：' + m.message;
-    }
-  };
-  worker.onerror = e => {
+  try {
+    const m = await ask({ op: 'convert', file: convFile, tolerance: tolerance() }, ratio => {
+      $('convProg').value = ratio;
+      $('convStat').textContent = `読み込み中… ${Math.round(ratio * 100)}%`;
+    });
+    preview = m.data;
+    previewSrc = m.src;
+    lastStats = m.stats;
+    const s = m.stats;
+    $('convStat').innerHTML =
+      `${fmtBytes(s.inBytes)} → <b>${fmtBytes(s.outBytes)}</b>（線 ${s.lines}本、点 ${fmtNum(s.ptsIn)} → ${fmtNum(s.ptsOut)}）`;
+    $('convSave').disabled = false;
+    redraw();
+    fitTo([preview]);
+  } catch (err) {
+    $('convStat').textContent = '変換できませんでした：' + err.message;
+  } finally {
     $('convProg').hidden = true;
-    $('convStat').textContent = '変換できませんでした：' + (e.message || 'Worker のエラー');
-  };
-  worker.postMessage({ file: convFile, tolerance: tolerance() });
+  }
 }
 
+// 2つ以上・zip のとき：強さを選んで、まとめて変換して保存する
+function startBatch(jobs) {
+  mode = 'batch';
+  batchJobs = jobs;
+  showConv(`${fmtNum(jobs.length)}件のログ`, jobs.reduce((a, j) => a + j.size, 0));
+  $('convSave').hidden = true;
+  $('convStart').hidden = false;
+  $('convStart').disabled = false;
+  $('convProg').hidden = true;
+  $('convStat').textContent = '間引きの強さを選んで「取り込む」を押してください。';
+}
+
+$('convStart').onclick = async () => {
+  const jobs = batchJobs;
+  const keys = new Set(routes.filter(r => r.src).map(r => r.src.name + '|' + r.src.bytes));
+  const tol = tolerance();
+  const g = gen;
+  $('convStart').disabled = true;
+  document.querySelectorAll('input[name=tol]').forEach(r => { r.disabled = true; });
+  $('convProg').hidden = false;
+  const added = [], failed = [];
+  let skipped = 0;
+  for (let i = 0; i < jobs.length; i++) {
+    const j = jobs[i];
+    $('convProg').value = i / jobs.length;
+    $('convStat').textContent = `${fmtNum(i + 1)} / ${fmtNum(jobs.length)}：${j.label}`;
+    if (keys.has(j.label + '|' + j.size)) { skipped++; continue; }
+    try {
+      const m = await ask({ op: 'convert', file: j.file, entry: j.entry, tolerance: tol });
+      const r = newRecord(m.data, m.stats.outBytes, m.src);
+      await putRoute(r);
+      routes.push(r);
+      added.push(r);
+      keys.add(m.src.name + '|' + m.src.bytes);
+      if (added.length % 25 === 0) { renderList(); redraw(); }
+    } catch (err) {
+      if (g !== gen) return;
+      failed.push(`${j.label}（${err.message}）`);
+    }
+  }
+  if (g !== gen) return;
+  $('convProg').value = 1;
+  let msg = `${fmtNum(added.length)}件を取り込みました。`;
+  if (skipped) msg += `取り込み済みの${fmtNum(skipped)}件は飛ばしました。`;
+  if (failed.length) msg += `読めなかった${failed.length}件：${failed.slice(0, 3).join('、')}${failed.length > 3 ? ' ほか' : ''}`;
+  $('convStat').textContent = msg;
+  $('convStart').hidden = true;
+  $('convCancel').textContent = '閉じる';
+  for (const r of added) openYears.add(yearOf(r.data));
+  renderList();
+  redraw();
+  if (added.length) fitTo(added.map(r => r.data));
+};
+
 function closeConv() {
-  worker?.terminate();
-  worker = null;
+  stopWorker();
+  mode = null;
   convFile = null;
   preview = null;
+  batchJobs = [];
   featureCache.delete('preview');
   $('conv').hidden = true;
   renderList();
@@ -298,23 +527,28 @@ function closeConv() {
 
 $('convCancel').onclick = closeConv;
 $('convSave').onclick = async () => {
-  const data = preview;
+  const data = preview, src = previewSrc;
   closeConv();
-  await addRoute(data, lastStats.outBytes);
+  await addRoute(data, lastStats.outBytes, src);
   toast(`「${data.name}」を保存しました`);
 };
 
-async function addRoute(data, bytes) {
-  const r = {
+function newRecord(data, bytes, src) {
+  return {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
-    created: Date.now(), visible: true, bytes, data,
+    created: Date.now(), visible: true, bytes, src, data,
   };
+}
+
+async function addRoute(data, bytes, src) {
+  const r = newRecord(data, bytes, src);
   await putRoute(r);
   routes.push(r);
+  openYears.add(yearOf(data));
   renderList();
   await mapReady;
   redraw();
-  fitTo(data);
+  fitTo([data]);
 }
 
 // ---------- 起動 ----------
@@ -330,12 +564,14 @@ async function addRoute(data, bytes) {
   if (new URLSearchParams(location.search).has('shared') && 'caches' in window) {
     history.replaceState(null, '', location.pathname);
     const cache = await caches.open('share');
-    const res = await cache.match('shared-file');
-    if (res) {
-      await cache.delete('shared-file');
+    const files = [];
+    for (const req of await cache.keys()) {
+      const res = await cache.match(req);
+      await cache.delete(req);
       const name = decodeURIComponent(res.headers.get('X-Filename') || 'shared.kml');
-      openFile(new File([await res.blob()], name));
+      files.push(new File([await res.blob()], name));
     }
+    if (files.length) openFiles(files);
   }
 })();
 

@@ -69,7 +69,33 @@ button:disabled { opacity: .45; }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .caret { display: inline-block; transition: transform .2s; color: var(--muted); }
 .sheet.collapsed .caret { transform: rotate(180deg); }
-.sheet.collapsed .list, .sheet.collapsed .empty { display: none; }
+.sheet.collapsed .list, .sheet.collapsed .empty, .sheet.collapsed .tools { display: none; }
+
+.head-btns { display: flex; gap: 8px; }
+#toolsBtn { padding: 0 12px; font-weight: 700; }
+#toolsBtn[aria-expanded="true"], #yearMode[aria-pressed="true"] { background: #e7f3ee; border-color: var(--accent); }
+
+.tools { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
+.tools input[type=search] {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+.tools .row button { min-height: 36px; font-size: 14px; padding: 0 10px; }
+.row.start { justify-content: flex-start; }
+.hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+
+.list li.year { display: flex; align-items: center; gap: 10px; padding: 6px 8px; background: #f6f8f9; border-radius: 8px; border-top: none; margin-top: 6px; }
+.list li.year input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; margin: 0; }
+.list li.year button { flex: 1; text-align: left; border: none; background: none; padding: 0; min-height: 34px; font-weight: 700; }
+.list li.year .caret { margin-left: 4px; }
+.list li.year.closed .caret { transform: rotate(-90deg); }
 
 .conv { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
 .conv-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -94,10 +120,10 @@ progress { width: 100%; height: 6px; }
 .stat b { color: var(--accent); }
 .row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
-.list { list-style: none; margin: 8px 0 0; padding: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.list { list-style: none; margin: 8px 0 0; padding: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
 .list li { border-top: 1px solid var(--line); padding: 8px 0; }
 .item { display: flex; align-items: center; gap: 10px; }
-.item input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
+.item input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; margin: 0 0 0 8px; }
 .swatch { width: 14px; height: 4px; border-radius: 2px; flex: none; }
 .info { flex: 1; min-width: 0; background: none; border: none; padding: 0; text-align: left; min-height: 40px; }
 .info b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
