@@ -77,5 +77,31 @@ with zipfile.ZipFile(os.path.join(out, "logs.zip"), "w", zipfile.ZIP_DEFLATED) a
     z.writestr("logs/broken.kml", "<kml><Placemark><Point><coordinates>139,35</coordinates></Point></Placemark></kml>")
     z.writestr("__MACOSX/logs/._走行000.kml", "junk")
 
-for n in ("sample.kml", "sample.kmz", "logs.zip"):
+# GPX：Strava 風（metadata に名前なし、trk の名前、trkseg が2つ、lon が先の点、閉じタグなしの点）
+def trkpts(x0, y0, n, t0=0):
+    return "".join(f'<trkpt lon="{x0 + i * 2e-5:.7f}" lat="{y0 + math.cos(i / 40) * 3e-4:.7f}"><ele>12.0</ele>'
+                   f"<time>2025-05-04T{(t0 + i) // 3600:02d}:{(t0 + i) // 60 % 60:02d}:{(t0 + i) % 60:02d}Z</time></trkpt>"
+                   for i in range(n))
+
+gpx = ('<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="StravaGPX" xmlns="http://www.topografix.com/GPX/1/1">'
+       '<metadata><time>2025-05-04T00:00:00Z</time></metadata>'
+       '<wpt lat="35.1" lon="139.1"><name>休憩所（点は無視）</name></wpt>'
+       f'<trk><name>Morning Ride</name><type>cycling</type><trkseg>{trkpts(139.30, 35.30, 3000)}</trkseg>'
+       f'<trkseg>{trkpts(139.36, 35.30, 1000, 3000)}<trkpt lat="35.31" lon="139.40"/></trkseg></trk></gpx>')
+rte = ('<gpx version="1.1"><metadata><name>計画ルート</name></metadata><rte><name>峠越え</name>'
+       '<rtept lat="35.40" lon="139.20"/><rtept lat="35.45" lon="139.25"/><rtept lat="35.50" lon="139.22"/></rte></gpx>')
+with open(os.path.join(out, "ride.gpx"), "w", encoding="utf-8") as f:
+    f.write(gpx)
+with open(os.path.join(out, "route.gpx"), "w", encoding="utf-8") as f:
+    f.write(rte)
+
+# Strava の一括書き出し風：activities/ に .gpx.gz / .gpx / .fit.gz が混ざる
+import gzip
+with zipfile.ZipFile(os.path.join(out, "strava.zip"), "w", zipfile.ZIP_DEFLATED) as z:
+    z.writestr("activities.csv", "id,name\n")
+    z.writestr("activities/111.gpx.gz", gzip.compress(gpx.encode()))
+    z.writestr("activities/222.gpx", rte)
+    z.writestr("activities/333.fit.gz", gzip.compress(b"\x0e\x10fake fit"))
+
+for n in ("sample.kml", "sample.kmz", "logs.zip", "ride.gpx", "route.gpx", "strava.zip"):
     print(n, os.path.getsize(os.path.join(out, n)))

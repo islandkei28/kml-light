@@ -377,29 +377,36 @@ $('fileInput').onchange = e => {
 async function sniff(f) {
   if (/\.json$/i.test(f.name)) return 'json';
   const h = new Uint8Array(await f.slice(0, 2).arrayBuffer());
-  if (h[0] === 0x1f && h[1] === 0x8b) return 'gz';
-  if (h[0] === 0x50 && h[1] === 0x4b) return /\.kmz$/i.test(f.name) ? 'kml' : 'zip';
-  if (/\.kml$/i.test(f.name) || /<kml[\s>]/.test(await f.slice(0, 2000).text())) return 'kml';
+  if (/\.fit(\.gz)?$/i.test(f.name)) return 'fit';
+  if (h[0] === 0x1f && h[1] === 0x8b) return /\.(kml|kmz|gpx)\.gz$/i.test(f.name) ? 'track' : 'gz';
+  if (h[0] === 0x50 && h[1] === 0x4b) return /\.kmz$/i.test(f.name) ? 'track' : 'zip';
+  if (/\.(kml|gpx)$/i.test(f.name) || /<(kml|gpx)[\s>]/.test(await f.slice(0, 2000).text())) return 'track';
   return '';
 }
 
 async function openFiles(files) {
   const jobs = [], bad = [];
+  let fit = 0;
   for (const f of files) {
     const kind = await sniff(f);
     if (kind === 'json' || kind === 'gz') await importJson(f, kind === 'gz');
-    else if (kind === 'kml') jobs.push({ file: f, label: f.name, size: f.size });
+    else if (kind === 'track') jobs.push({ file: f, label: f.name, size: f.size });
+    else if (kind === 'fit') fit++;
     else if (kind === 'zip') {
       try {
-        const { entries } = await ask({ op: 'list', file: f });
-        if (!entries.length) bad.push(f.name);
-        for (const z of entries) jobs.push({ file: f, entry: z.name, label: z.name.split('/').pop(), size: z.size });
+        const m = await ask({ op: 'list', file: f });
+        fit += m.fit;
+        if (!m.entries.length && !m.fit) bad.push(f.name);
+        for (const z of m.entries) jobs.push({ file: f, entry: z.name, label: z.name.split('/').pop(), size: z.size });
       } catch {
         bad.push(f.name);
       }
     } else bad.push(f.name);
   }
-  if (bad.length) toast(`読めないファイルがありました：${bad.slice(0, 3).join('、')}${bad.length > 3 ? ' ほか' : ''}`);
+  const notes = [];
+  if (fit) notes.push(`FIT形式の${fmtNum(fit)}件は読めないので飛ばします（GPXで書き出してください）`);
+  if (bad.length) notes.push(`読めないファイルがありました：${bad.slice(0, 3).join('、')}${bad.length > 3 ? ' ほか' : ''}`);
+  if (notes.length) toast(notes.join('。'));
   if (jobs.length === 1 && !jobs[0].entry) startSingle(jobs[0].file);
   else if (jobs.length) startBatch(jobs);
 }

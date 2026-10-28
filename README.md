@@ -1,11 +1,11 @@
 # KMLライト
 
-KML / KMZ の線を軽くして地図に表示する PWA。iPhone・Android 共通。ビルド不要（そのまま置けば動く）。
+KML / KMZ / GPX の線を軽くして地図に表示する PWA。iPhone・Android 共通。ビルド不要（そのまま置けば動く）。
 
 - 変換はすべて端末の中（Web Worker）。ファイルは外に送らない
-- 線（LineString / LinearRing / gx:Track）だけを取り出し、Douglas–Peucker で間引き（1 / 3 / 10 / 30 m）、座標は約1m精度の encoded polyline にする
+- 線（KML の LineString / LinearRing / gx:Track、GPX の trk / rte）だけを取り出し、Douglas–Peucker で間引き（1 / 3 / 10 / 30 m）、座標は約1m精度の encoded polyline にする
 - 保存は IndexedDB。書き出しは KML か軽量ファイル（`.line.json`、このアプリで読み込める）
-- まとめて取り込み：複数の KML/KMZ や、ログを詰めた zip をそのまま選べる。同じファイル（名前と大きさが同じ）は飛ばす
+- まとめて取り込み：複数の KML/KMZ/GPX や、ログを詰めた zip をそのまま選べる。`.gpx.gz` などの gzip も読む（Strava の一括書き出しの zip をそのまま入れられる）。FIT は読めないので数だけ知らせる。同じファイル（名前と大きさが同じ）は飛ばす
 - 記録の日付は KML の中の日時 → ファイル名の日付 → ファイルの更新日時 の順に取る。一覧は年ごとにまとめ、名前・日付で探せる。年で色分けもできる
 - バックアップ：全部を1つの `.json.gz` に書き出し、開くボタンから戻せる（既にあるものは飛ばす）。iCloud Drive / Google Drive などに自分で置く
 - 読み込むファイルは信用しない：形の崩れた軽量ファイル・バックアップは受け取らない。ページは CSP で自分自身と国土地理院タイル以外と通信できない

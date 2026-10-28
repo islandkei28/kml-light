@@ -1,7 +1,7 @@
 {
   "name": "KMLライト",
   "short_name": "KMLライト",
-  "description": "KML / KMZ の線を軽くして地図に表示する",
+  "description": "KML / KMZ / GPX の線を軽くして地図に表示する",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -22,9 +22,10 @@
         {
           "name": "file",
           "accept": [
-            ".kml", ".kmz", ".json",
+            ".kml", ".kmz", ".gpx", ".json", ".gz",
             "application/vnd.google-earth.kml+xml",
             "application/vnd.google-earth.kmz",
+            "application/gpx+xml", "application/gzip",
             "application/xml", "text/xml", "application/json",
             "application/octet-stream", "application/zip"
           ]

@@ -1,7 +1,11 @@
-// KMLを少しずつ読み、線（LineString / LinearRing / gx:Track）だけを取り出す。
+// KML / GPX を少しずつ読み、線だけを取り出す。
+//   KML: Placemark の LineString / LinearRing / gx:Track
+//   GPX: trk の trkseg（trkpt）、rte（rtept）。GPX の trk / rte は KML の Placemark と同じに扱う
 // 大きなファイルでもメモリに全部載せないよう、DOMParser は使わない。
 
 const local = q => q.slice(q.indexOf(':') + 1);
+const PM_TAGS = new Set(['Placemark', 'trk', 'rte']);   // この直下の name が線の名前
+const DOC_TAGS = new Set(['Document', 'metadata']);    // この直下の name がファイルの名前
 
 const ENT = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
 const decodeEntities = s => s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, e) =>
@@ -22,7 +26,7 @@ export class KmlLineReader {
     this.styleMaps = new Map();  // StyleMap id → normal の styleUrl
     this.placemarks = [];        // { name, styleUrl, color, width, lines: [[lon, lat, ...]] }
     this.docName = '';
-    this.firstWhen = '';         // 最初に出てきた日時（TimeStamp / TimeSpan / gx:Track）
+    this.firstWhen = '';         // 最初に出てきた日時（KML の when / begin、GPX の time）
     this.pm = null;
     this.style = null;
     this.styleMap = null;
@@ -92,16 +96,27 @@ export class KmlLineReader {
     if (!m) return;
     const name = local(m[0]);
     const id = /\bid\s*=\s*["']([^"']*)["']/.exec(raw)?.[1];
-    this._open(name, id);
+    this._open(name, id, raw);
     if (raw.endsWith('/')) this._close(name);
   }
 
-  _open(name, id) {
+  _open(name, id, raw) {
     const parent = this.stack[this.stack.length - 1];
     this.stack.push(name);
     switch (name) {
-      case 'Placemark':
+      case 'Placemark': case 'trk': case 'rte':
         this.pm = { name: '', styleUrl: '', color: null, width: null, lines: [] };
+        if (name === 'rte') this.line = [];
+        break;
+      case 'trkseg':
+        this.line = [];
+        break;
+      case 'trkpt': case 'rtept':
+        if (this.line) {
+          const lat = +/\blat\s*=\s*["']([^"']*)["']/.exec(raw)?.[1];
+          const lon = +/\blon\s*=\s*["']([^"']*)["']/.exec(raw)?.[1];
+          if (Number.isFinite(lon) && Number.isFinite(lat)) this.line.push(lon, lat);
+        }
         break;
       case 'Style':
         this.style = { id, color: null, width: null };
@@ -122,7 +137,7 @@ export class KmlLineReader {
         if (this.line) this.text = '';
         break;
       case 'name':
-        if ((parent === 'Placemark' && this.pm) || (parent === 'Document' && !this.docName)) this.text = '';
+        if ((this.pm && PM_TAGS.has(parent)) || (!this.docName && DOC_TAGS.has(parent))) this.text = '';
         break;
       case 'color': case 'width':
         if (this.style && parent === 'LineStyle') this.text = '';
@@ -130,7 +145,7 @@ export class KmlLineReader {
       case 'styleUrl': case 'key':
         this.text = '';
         break;
-      case 'when': case 'begin':
+      case 'when': case 'begin': case 'time':
         if (!this.firstWhen) this.text = '';
         break;
     }
@@ -146,8 +161,8 @@ export class KmlLineReader {
     switch (name) {
       case 'name':
         if (t === null) break;
-        if (parent === 'Placemark' && this.pm) this.pm.name = t.trim();
-        else if (parent === 'Document' && !this.docName) this.docName = t.trim();
+        if (this.pm && PM_TAGS.has(parent)) this.pm.name = t.trim();
+        else if (!this.docName && DOC_TAGS.has(parent)) this.docName = t.trim();
         break;
       case 'color':
         if (t !== null && this.style) this.style.color = kmlColor(t);
@@ -163,7 +178,7 @@ export class KmlLineReader {
       case 'key':
         if (t !== null && this.pair) this.pair.key = t.trim();
         break;
-      case 'when': case 'begin':
+      case 'when': case 'begin': case 'time':
         if (t !== null && !this.firstWhen) this.firstWhen = t.trim();
         break;
       case 'Style': {
@@ -201,11 +216,13 @@ export class KmlLineReader {
           if (Number.isFinite(lon) && Number.isFinite(lat)) this.line.push(lon, lat);
         }
         break;
-      case 'LineString': case 'LinearRing': case 'Track':
+      case 'LineString': case 'LinearRing': case 'Track': case 'trkseg':
         if (this.line && this.pm && this.line.length >= 4) this.pm.lines.push(this.line);
         this.line = null;
         break;
-      case 'Placemark':
+      case 'Placemark': case 'trk': case 'rte':
+        if (name === 'rte' && this.line && this.pm && this.line.length >= 4) this.pm.lines.push(this.line);
+        if (name === 'rte') this.line = null;
         if (this.pm && this.pm.lines.length) this.placemarks.push(this.pm);
         this.pm = null;
         break;

@@ -1,21 +1,25 @@
 // 変換は画面を止めないよう、この Worker の中で行う。
-// 受け取る: { op: 'list', file }                      → { type: 'list', entries: [{ name, size, date }] }
+// 受け取る: { op: 'list', file }                      → { type: 'list', entries: [{ name, size, date }], fit }
 //           { op: 'convert', file, entry?, tolerance } → { type: 'progress', ratio } … { type: 'done', data, stats }
-// entry を付けると、zip の中のそのファイル（KML / KMZ）を変換する。失敗は { type: 'error', message }
+// entry を付けると、zip の中のそのファイル（KML / KMZ / GPX、.gz 付きも）を変換する。失敗は { type: 'error', message }
+// fit は zip の中にあった、読めない FIT ファイルの数
 import { KmlLineReader } from './kml-parse.js';
 import { simplify } from './simplify.js';
 import { FORMAT, encode } from './format.js';
 
+const TRACK_FILE = /\.(kml|kmz|gpx)(\.gz)?$/i;
 const PALETTE = ['#e6194b', '#3c78d8', '#2e9d4f', '#f58231', '#911eb4', '#0aa5b5', '#d4a017', '#c2185b'];
 
 self.onmessage = async e => {
   try {
     const m = e.data;
     if (m.op === 'list') {
-      const entries = (await readZipDir(m.file))
-        .filter(z => /\.km[lz]$/i.test(z.name) && !/(^|\/)(__MACOSX\/|\.)/.test(z.name))
+      const all = (await readZipDir(m.file)).filter(z => !/(^|\/)(__MACOSX\/|\.)/.test(z.name));
+      const entries = all
+        .filter(z => TRACK_FILE.test(z.name))
         .map(z => ({ name: z.name, size: z.usize, date: z.date }));
-      self.postMessage({ type: 'list', entries });
+      const fit = all.filter(z => /\.fit(\.gz)?$/i.test(z.name)).length;
+      self.postMessage({ type: 'list', entries, fit });
     } else {
       self.postMessage(await convert(m));
     }
@@ -68,11 +72,13 @@ async function convert({ file, entry, tolerance }) {
       lines.push(line);
     }
   }
-  if (!lines.length) throw new Error('線（LineString / gx:Track）が見つかりませんでした');
+  if (!lines.length) throw new Error('線（トラック）が見つかりませんでした');
 
+  // 名前：ファイルの名前 → 線が1つだけならその名前（Strava の GPX は「Morning Ride」など）→ ファイル名
+  const one = reader.placemarks.length === 1 ? reader.placemarks[0].name : '';
   const data = {
     type: FORMAT, v: 1,
-    name: reader.docName || name.replace(/\.(kml|kmz)$/i, ''),
+    name: reader.docName || one || name.replace(TRACK_FILE, ''),
     date: logDate(reader.firstWhen, name, lastMod),
     bbox: [w, s, ea, n], lines,
   };
@@ -92,6 +98,10 @@ function logDate(when, name, lastMod) {
 
 async function openKml(blob) {
   const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+  // .gpx.gz など（Strava の一括書き出しに入っている）。解凍してから読み直す
+  if (head[0] === 0x1f && head[1] === 0x8b) {
+    return openKml(await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).blob());
+  }
   if (!(head[0] === 0x50 && head[1] === 0x4b)) return { stream: blob.stream(), size: blob.size };
   // KMZ：中の KML を1つ取り出す。doc.kml があればそれを優先
   const isDoc = s => /(^|\/)doc\.kml$/i.test(s);
