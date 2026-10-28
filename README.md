@@ -39,4 +39,4 @@ Service Worker と現在地は HTTPS が必要。GitHub Pages（main の最上�
 `_headers` は Cloudflare Pages に移すとき用（GitHub Pages では使われない）。
 公開したURLを開いて、iPhone は Safari の共有 →「ホーム画面に追加」、Android は Chrome のメニュー →「アプリをインストール」。
 
-アプリの中身を変えたときは `sw.js` の `APP` の版（`app-v1`）を上げる。
+アプリの中身を変えたときは `sw.js` の `APP` の版を上げる。アプリ本体はネット優先で取るので、更新は次に開いたときに届く（圏外や3秒で返らないときは保存分を使う）。

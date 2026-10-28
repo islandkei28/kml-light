@@ -1,6 +1,6 @@
 // オフラインでも開けるようにアプリ本体と見た地図タイルを保存する。
 // Android の共有メニューから届いたファイルも受け取る。
-const APP = 'app-v4';
+const APP = 'app-v5';
 const TILES = 'tiles-v1';
 const TILE_MAX = 3000;
 const SHELL = [
@@ -34,7 +34,7 @@ self.addEventListener('fetch', e => {
   if (url.hostname === 'cyberjapandata.gsi.go.jp') {
     e.respondWith(tile(req));
   } else if (url.origin === location.origin) {
-    e.respondWith(staleWhileRevalidate(req));
+    e.respondWith(networkFirst(req));
   }
 });
 
@@ -49,15 +49,22 @@ async function receiveShare(req) {
   return Response.redirect('./?shared=1', 303);
 }
 
-// まずネットから新しいものを取りに行き、取れなければ保存してあるものを返す
-async function staleWhileRevalidate(req) {
+// まずネットから新しいものを取りに行く（更新がすぐ届くように）。
+// 圏外や電波が弱くて3秒で返ってこないときは、保存してあるものを返す
+async function networkFirst(req) {
   const cache = await caches.open(APP);
-  const hit = await cache.match(req, { ignoreSearch: req.mode === 'navigate' });
   const net = fetch(req).then(res => {
     if (res.ok) cache.put(req, res.clone());
     return res;
-  }).catch(() => hit || (req.mode === 'navigate' ? cache.match('index.html') : Response.error()));
-  return hit || net;
+  });
+  net.catch(() => {});  // 3秒で諦めたあとに失敗しても、エラーを出さない
+  const hit = await cache.match(req, { ignoreSearch: req.mode === 'navigate' });
+  if (!hit) return net.catch(async () => (req.mode === 'navigate' && await cache.match('index.html')) || Response.error());
+  try {
+    return await Promise.race([net, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000))]);
+  } catch {
+    return hit;
+  }
 }
 
 let puts = 0;
