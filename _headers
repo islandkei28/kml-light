@@ -1,0 +1,10 @@
+# Cloudflare Pages が返すヘッダー（GitHub Pages では付けられなかったもの）
+/*
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=()
+
+/sw.js
+  Cache-Control: no-cache
