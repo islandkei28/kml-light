@@ -35,7 +35,8 @@ http://localhost:8790/ を開く。テスト用ファイルは `python devtools/
 
 ## スマホで使う
 
-Service Worker と現在地は HTTPS が必要。アカウント名が URL に出ないよう、このリポジトリは非公開にして Cloudflare Pages から公開する（ビルドなし、出力ディレクトリはリポジトリの最上位）。main に push すると反映される。
+Service Worker と現在地は HTTPS が必要。GitHub Pages（main の最上位）で公開していて、main に push すると反映される：https://islandkei28.github.io/kml-light/
+`_headers` は Cloudflare Pages に移すとき用（GitHub Pages では使われない）。
 公開したURLを開いて、iPhone は Safari の共有 →「ホーム画面に追加」、Android は Chrome のメニュー →「アプリをインストール」。
 
 アプリの中身を変えたときは `sw.js` の `APP` の版（`app-v1`）を上げる。
