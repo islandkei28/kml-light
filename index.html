@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- 読み込みと通信を自分自身と国土地理院タイルだけに限る -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob: https://cyberjapandata.gsi.go.jp; connect-src 'self' https://cyberjapandata.gsi.go.jp; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>KMLライト</title>
+  <meta name="theme-color" content="#1f7a5a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="KMLライト">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="vendor/maplibre-gl-4.7.1/maplibre-gl.css">
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/maplibre-gl-4.7.1/maplibre-gl-csp.js"></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <div id="map"></div>
+  <button id="baseBtn" class="chip">地図：標準</button>
+
+  <section id="sheet" class="sheet">
+    <header class="sheet-head">
+      <button id="sheetToggle" class="plain">ルート <span id="count"></span> <span class="caret">▾</span></button>
+      <button id="openBtn" class="primary">＋ KMLを開く</button>
+      <input id="fileInput" type="file" class="vh">
+    </header>
+
+    <div id="conv" class="conv" hidden>
+      <div class="conv-file"><b id="convName"></b> <small id="convSize"></small></div>
+      <div class="seg" role="radiogroup" aria-label="間引きの強さ">
+        <label><input type="radio" name="tol" value="1"><span>細かい<br><small>1m</small></span></label>
+        <label><input type="radio" name="tol" value="3" checked><span>ふつう<br><small>3m</small></span></label>
+        <label><input type="radio" name="tol" value="10"><span>軽い<br><small>10m</small></span></label>
+        <label><input type="radio" name="tol" value="30"><span>とても軽い<br><small>30m</small></span></label>
+      </div>
+      <progress id="convProg" max="1" value="0"></progress>
+      <p id="convStat" class="stat"></p>
+      <div class="row">
+        <button id="convCancel">やめる</button>
+        <button id="convSave" class="primary" disabled>保存</button>
+      </div>
+    </div>
+
+    <ul id="list" class="list"></ul>
+    <p id="empty" class="empty">KML / KMZ を開くと、線を軽くして地図に表示します。</p>
+  </section>
+
+  <div id="toast" class="toast" role="status"></div>
+</body>
+</html>
