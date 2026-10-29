@@ -1,8 +1,8 @@
 // 軽量ファイル（*.line.json）の形と、線の符号化（Google の encoded polyline、精度 1e-5 度 ≒ 1m）
 //
-// { "type": "kml-light", "v": 1, "name": "...", "date": "YYYY-MM-DD", "bbox": [西, 南, 東, 北],
+// { "type": "kml-light", "v": 1, "name": "...", "date": "YYYY-MM-DD", "dateEnd": "YYYY-MM-DD", "bbox": [西, 南, 東, 北],
 //   "lines": [ { "name": "...", "color": "#rrggbb", "width": 4, "p": "<encoded polyline>" } ] }
-// date と width はなくてもよい
+// date・dateEnd・width はなくてもよい。dateEnd は何日かにわたるときの最後の日（date より後）
 
 export const FORMAT = 'kml-light';
 const FACTOR = 1e5;
@@ -11,6 +11,7 @@ const FACTOR = 1e5;
 export function isLight(obj) {
   return !!obj && obj.type === FORMAT && typeof obj.name === 'string'
     && (obj.date === undefined || obj.date === '' || /^\d{4}-\d{2}-\d{2}$/.test(obj.date))
+    && (obj.dateEnd === undefined || (/^\d{4}-\d{2}-\d{2}$/.test(obj.dateEnd) && !!obj.date && obj.dateEnd > obj.date))
     && Array.isArray(obj.bbox) && obj.bbox.length === 4 && obj.bbox.every(Number.isFinite)
     && Array.isArray(obj.lines) && obj.lines.length > 0
     && obj.lines.every(l => l && typeof l.p === 'string' && /^#[0-9a-f]{6}$/i.test(l.color)

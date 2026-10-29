@@ -1,6 +1,6 @@
 // オフラインでも開けるようにアプリ本体と見た地図タイルを保存する。
 // Android の共有メニューから届いたファイルも受け取る。
-const APP = 'app-v6';
+const APP = 'app-v7';
 const TILES = 'tiles-v1';
 const TILE_MAX = 3000;
 const SHELL = [

@@ -25,9 +25,19 @@ let openYearsInit = false;
 const featureCache = new Map();
 
 const yearOf = data => (data.date || '').slice(0, 4);
+// 「2025-08-10」「2025-08-10〜08-12」「2025-12-30〜2026-01-02」
+function fmtDate(data) {
+  if (!data.date) return '';
+  if (!data.dateEnd) return data.date;
+  return data.date + '〜' + (data.dateEnd.slice(0, 4) === data.date.slice(0, 4) ? data.dateEnd.slice(5) : data.dateEnd);
+}
 const yearColor = y => YEAR_COLORS[+y % YEAR_COLORS.length];
 
 // ---------- 地図 ----------
+
+// 前に選んだ背景地図（この端末だけの覚え書き。読めなくても困らない）
+let baseIdx = 0;
+try { baseIdx = Math.max(0, BASES.findIndex(b => b.id === localStorage.getItem('base'))); } catch { /* 使えなくてもよい */ }
 
 // CSP で blob: の Worker を禁じているので、MapLibre の Worker は別ファイルから読む
 maplibregl.setWorkerUrl('vendor/maplibre-gl-4.7.1/maplibre-gl-csp-worker.js');
@@ -43,7 +53,7 @@ const map = new maplibregl.Map({
       type: 'raster', tiles: [b.url], tileSize: 256, maxzoom: b.maxzoom || 18, attribution: b.attr,
     }])),
     layers: BASES.map((b, i) => ({
-      id: b.id, type: 'raster', source: b.id, layout: { visibility: i === 0 ? 'visible' : 'none' },
+      id: b.id, type: 'raster', source: b.id, layout: { visibility: i === baseIdx ? 'visible' : 'none' },
     })),
   },
 });
@@ -75,14 +85,35 @@ mapReady.then(() => {
   redraw();
 });
 
-let baseIdx = 0;
-$('baseBtn').onclick = async () => {
+// 背景地図は一覧から選ぶ
+function renderBaseMenu() {
+  $('baseBtn').textContent = `地図：${BASES[baseIdx].label} ▾`;
+  $('baseMenu').textContent = '';
+  BASES.forEach((b, i) => {
+    const btn = document.createElement('button');
+    btn.setAttribute('role', 'menuitemradio');
+    btn.setAttribute('aria-checked', i === baseIdx);
+    btn.textContent = b.label === 'OSM' ? 'OpenStreetMap' : '地理院 ' + b.label;
+    btn.onclick = () => setBase(i);
+    $('baseMenu').append(btn);
+  });
+}
+function showBaseMenu(show) {
+  $('baseMenu').hidden = !show;
+  $('baseBtn').setAttribute('aria-expanded', show);
+}
+async function setBase(i) {
+  showBaseMenu(false);
   await mapReady;
   map.setLayoutProperty(BASES[baseIdx].id, 'visibility', 'none');
-  baseIdx = (baseIdx + 1) % BASES.length;
+  baseIdx = i;
   map.setLayoutProperty(BASES[baseIdx].id, 'visibility', 'visible');
-  $('baseBtn').textContent = '地図：' + BASES[baseIdx].label;
-};
+  try { localStorage.setItem('base', BASES[i].id); } catch { /* 覚えられなくてもよい */ }
+  renderBaseMenu();
+}
+renderBaseMenu();
+$('baseBtn').onclick = e => { e.stopPropagation(); showBaseMenu($('baseMenu').hidden); };
+document.addEventListener('click', e => { if (!$('baseMenu').contains(e.target)) showBaseMenu(false); });
 
 function features(key, data) {
   let f = featureCache.get(key);
@@ -90,7 +121,7 @@ function features(key, data) {
     f = data.lines.map(l => ({
       type: 'Feature',
       properties: {
-        name: l.name, route: data.name, date: data.date || '', year: yearOf(data),
+        name: l.name, route: data.name, date: fmtDate(data), year: yearOf(data),
         color: l.color, width: Math.min(Math.max(l.width || 4, 3), 8),
       },
       geometry: { type: 'LineString', coordinates: decode(l.p) },
@@ -137,10 +168,20 @@ function fitTo(list) {
 const fmtBytes = b => b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(b < 10240 ? 1 : 0) + ' KB' : (b / 1048576).toFixed(1) + ' MB';
 const fmtNum = n => n.toLocaleString('ja-JP');
 
+// 検索：日付の形（2025 / 2025-08 / 2025-08-11）なら、その期間にかかるルートを出す。ほかは名前などの一部で探す
+function matches(r, q) {
+  const m = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/.exec(q);
+  if (m && r.data.date) {
+    const from = `${m[1]}-${m[2] || '01'}-${m[3] || '01'}`, to = `${m[1]}-${m[2] || '12'}-${m[3] || '31'}`;
+    return r.data.date <= to && (r.data.dateEnd || r.data.date) >= from;
+  }
+  return [r.data.name, fmtDate(r.data), r.src?.name].some(s => s && s.toLowerCase().includes(q));
+}
+
 function shownRoutes() {
   const q = filterText.trim().toLowerCase();
   return routes
-    .filter(r => !q || [r.data.name, r.data.date, r.src?.name].some(s => s && s.toLowerCase().includes(q)))
+    .filter(r => !q || matches(r, q))
     .sort((a, b) => (b.data.date || '').localeCompare(a.data.date || '') || b.created - a.created);
 }
 
@@ -203,10 +244,20 @@ function routeRow(r) {
     </div>
     <div class="actions">
       <button data-a="fit">地図で見る</button>
+      <button data-a="date">日付を変える</button>
+      <button data-a="rename">名前を変える</button>
       <button data-a="kml">KMLで書き出す</button>
       <button data-a="light">軽量ファイルで書き出す</button>
-      <button data-a="rename">名前を変える</button>
       <button data-a="del" class="danger">削除</button>
+      <div class="date-edit" hidden>
+        <label>開始 <input type="date" class="d1"></label>
+        <label>終了 <input type="date" class="d2"></label>
+        <p class="hint">1日だけなら終了は空のまま。開始も空にすると「日付なし」になります。</p>
+        <div class="row">
+          <button data-a="date-cancel">やめる</button>
+          <button data-a="date-save" class="primary">保存</button>
+        </div>
+      </div>
     </div>`;
   const cb = li.querySelector('input');
   cb.checked = r.visible;
@@ -214,7 +265,7 @@ function routeRow(r) {
   const y = yearOf(r.data);
   li.querySelector('.swatch').style.background = yearMode && y ? yearColor(y) : r.data.lines[0]?.color || '#888';
   li.querySelector('b').textContent = r.data.name;
-  li.querySelector('small').textContent = `${r.data.date || '日付なし'}・${r.data.lines.length}本・${fmtBytes(r.bytes)}`;
+  li.querySelector('small').textContent = `${fmtDate(r.data) || '日付なし'}・${r.data.lines.length}本・${fmtBytes(r.bytes)}`;
   li.querySelector('.info').onclick = () => {
     li.classList.toggle('open');
     if (!r.visible) setVisible([r], true);
@@ -222,7 +273,7 @@ function routeRow(r) {
   };
   li.querySelector('.actions').onclick = e => {
     const a = e.target.dataset?.a;
-    if (a) onAction(a, r);
+    if (a) onAction(a, r, li);
   };
   return li;
 }
@@ -234,9 +285,30 @@ async function setVisible(list, v) {
   await putRoutes(list);
 }
 
-async function onAction(a, r) {
+async function onAction(a, r, li) {
   const base = r.data.name.replace(/[\\/:*?"<>|]/g, '_') || 'route';
+  const ed = li.querySelector('.date-edit');
   if (a === 'fit') fitTo([r.data]);
+  else if (a === 'date') {
+    ed.querySelector('.d1').value = r.data.date || '';
+    ed.querySelector('.d2').value = r.data.dateEnd || '';
+    ed.hidden = false;
+  } else if (a === 'date-cancel') {
+    ed.hidden = true;
+  } else if (a === 'date-save') {
+    let s = ed.querySelector('.d1').value, e = ed.querySelector('.d2').value;
+    if (!s) [s, e] = [e, ''];
+    if (e && e < s) [s, e] = [e, s];
+    if (e === s) e = '';
+    r.data.date = s;
+    if (e) r.data.dateEnd = e; else delete r.data.dateEnd;
+    featureCache.delete(r.id);
+    await putRoute(r);
+    openYears.add(yearOf(r.data));
+    renderList();
+    redraw();
+    toast(`「${r.data.name}」の日付を ${fmtDate(r.data) || '日付なし'} にしました`);
+  }
   else if (a === 'kml') {
     await saveFile(new Blob([toKml(r.data)], { type: 'application/vnd.google-earth.kml+xml' }), base + '.kml');
   } else if (a === 'light') {
