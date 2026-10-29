@@ -1,6 +1,6 @@
 // オフラインでも開けるようにアプリ本体と見た地図タイルを保存する。
 // Android の共有メニューから届いたファイルも受け取る。
-const APP = 'app-v5';
+const APP = 'app-v6';
 const TILES = 'tiles-v1';
 const TILE_MAX = 3000;
 const SHELL = [
@@ -31,7 +31,7 @@ self.addEventListener('fetch', e => {
   }
   if (req.method !== 'GET') return;
 
-  if (url.hostname === 'cyberjapandata.gsi.go.jp') {
+  if (url.hostname === 'cyberjapandata.gsi.go.jp' || url.hostname === 'tile.openstreetmap.org') {
     e.respondWith(tile(req));
   } else if (url.origin === location.origin) {
     e.respondWith(networkFirst(req));

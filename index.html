@@ -3,9 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <!-- 読み込みと通信を自分自身と国土地理院タイルだけに限る -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob: https://cyberjapandata.gsi.go.jp; connect-src 'self' https://cyberjapandata.gsi.go.jp; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <meta name="referrer" content="no-referrer">
+  <!-- 読み込みと通信を自分自身と地図タイル（国土地理院・OSM）だけに限る -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob: https://cyberjapandata.gsi.go.jp https://tile.openstreetmap.org; connect-src 'self' https://cyberjapandata.gsi.go.jp https://tile.openstreetmap.org; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <!-- OSM のタイルは送り元のサイトを求めるので、サイトのアドレスだけ送る（ページのパスは送らない） -->
+  <meta name="referrer" content="strict-origin">
   <title>KMLライト</title>
   <meta name="theme-color" content="#1f7a5a">
   <meta name="apple-mobile-web-app-capable" content="yes">

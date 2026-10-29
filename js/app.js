@@ -3,10 +3,15 @@ import { decode, isLight, toKml } from './format.js';
 
 const $ = id => document.getElementById(id);
 const GSI = 'https://cyberjapandata.gsi.go.jp/xyz/';
+const GSI_ATTR = '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">国土地理院</a>';
 const BASES = [
-  { id: 'std', label: '標準', url: GSI + 'std/{z}/{x}/{y}.png' },
-  { id: 'pale', label: '淡色', url: GSI + 'pale/{z}/{x}/{y}.png' },
-  { id: 'photo', label: '写真', url: GSI + 'seamlessphoto/{z}/{x}/{y}.jpg' },
+  { id: 'std', label: '標準', url: GSI + 'std/{z}/{x}/{y}.png', attr: GSI_ATTR },
+  { id: 'pale', label: '淡色', url: GSI + 'pale/{z}/{x}/{y}.png', attr: GSI_ATTR },
+  { id: 'photo', label: '写真', url: GSI + 'seamlessphoto/{z}/{x}/{y}.jpg', attr: GSI_ATTR },
+  {
+    id: 'osm', label: 'OSM', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', maxzoom: 19,
+    attr: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors',
+  },
 ];
 const BACKUP = 'kml-light-backup';
 const YEAR_COLORS = ['#e6194b', '#3c78d8', '#2e9d4f', '#f58231', '#911eb4', '#0aa5b5', '#d4a017', '#c2185b', '#6d4c41', '#455a64'];
@@ -35,8 +40,7 @@ const map = new maplibregl.Map({
   style: {
     version: 8,
     sources: Object.fromEntries(BASES.map(b => [b.id, {
-      type: 'raster', tiles: [b.url], tileSize: 256, maxzoom: 18,
-      attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">国土地理院</a>',
+      type: 'raster', tiles: [b.url], tileSize: 256, maxzoom: b.maxzoom || 18, attribution: b.attr,
     }])),
     layers: BASES.map((b, i) => ({
       id: b.id, type: 'raster', source: b.id, layout: { visibility: i === 0 ? 'visible' : 'none' },
@@ -72,7 +76,8 @@ mapReady.then(() => {
 });
 
 let baseIdx = 0;
-$('baseBtn').onclick = () => {
+$('baseBtn').onclick = async () => {
+  await mapReady;
   map.setLayoutProperty(BASES[baseIdx].id, 'visibility', 'none');
   baseIdx = (baseIdx + 1) % BASES.length;
   map.setLayoutProperty(BASES[baseIdx].id, 'visibility', 'visible');
